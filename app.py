@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 import database
 import google_service
 import urllib.parse
-from streamlit_js_eval import get_geolocation  # 新增：瀏覽器精準定位
+from streamlit_js_eval import get_geolocation
 
 # --- Configuration ---
 st.set_page_config(page_title="今天吃什麼", page_icon="🍱", layout="centered")
@@ -147,35 +147,25 @@ with tab1:
     if 'current_location' not in st.session_state:
         st.session_state.current_location = None
     
-    # 全方位定位系統 (Bulletproof Location System)
-    loc_col1, loc_col2, loc_col3 = st.columns(3)
+    # 全方位定位系統
+    loc_col1, loc_col2 = st.columns(2)
     
     with loc_col1:
-        # A. 瀏覽器精準定位 (High Accuracy)
+        # A. 瀏覽器精準定位 (GPS)
+        # st.markdown("###### 📍 GPS 精準定位") # User requested to hide this
         browser_loc = get_geolocation(component_key='get_geolocation')
         if browser_loc:
             st.session_state.current_location = {
                 'lat': browser_loc['coords']['latitude'],
                 'lng': browser_loc['coords']['longitude']
             }
-            # 定位成功自動顯示回饋
     
     with loc_col2:
-        # B. IP 定位 (備用)
-        if st.button("🌐 IP 定位 (備用)"):
-            with st.spinner("正在取得 IP 位置..."):
-                loc = google_service.get_ip_location()
-                if loc:
-                    st.session_state.current_location = loc
-                    st.toast(f"IP 定位成功：{loc['city']}", icon="✅")
-                else:
-                    st.error("IP 定位失敗")
-    
-    with loc_col3:
-        # C. 演示模式 (強制三民區)
-        if st.button("🏫 設為三民區 (演示)"):
-            st.session_state.current_location = {'lat': 22.6515, 'lng': 120.3200}
-            st.toast("已切換至高雄三民區", icon="🚀")
+        # B. 演示模式 (強制高科建工)
+        st.markdown("###### 🏫 快速設定")
+        if st.button("設為高科建工"):
+            st.session_state.current_location = {'lat': 22.6515122, 'lng': 120.3286609}
+            st.toast("已切換至高科大建工校區", icon="🚀")
 
     # 顯示目前位置資訊與地圖
     if st.session_state.current_location:
@@ -185,7 +175,6 @@ with tab1:
         
         # 顯示小地圖確認
         st.map(pd.DataFrame({'lat': [lat], 'lon': [lng]}), zoom=14)
-
 
     # Step 3: Search
     st.subheader("2. 搜尋附近餐廳")
@@ -344,7 +333,7 @@ with tab4:
     # Load Deals
     deals_df, update_date = finder.fetch_latest_deals()
     
-    st.info(f"📅 資料更新日期: {update_date}")
+    st.caption(f"資料更新日期: {update_date}")
     
     if not deals_df.empty:
         # Group by chain name

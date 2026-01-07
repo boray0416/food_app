@@ -4,25 +4,26 @@ import pandas as pd
 DB_FILE = "dining_system.db"
 
 def init_db():
-    """Initialize the database with the dining_records table. No seed data."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    
+    # 1. Dining Records Table (Single User)
     c.execute('''
         CREATE TABLE IF NOT EXISTS dining_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT,
-            time_slot TEXT,
             mood INTEGER,
             weather INTEGER,
             is_work INTEGER,
+            meal_type TEXT,
             food_name TEXT,
             restaurant_name TEXT,
             lat REAL,
             lng REAL
         )
     ''')
-    
-    # Create deals_cache table
+
+    # 2. Deals Cache Table
     c.execute('''
         CREATE TABLE IF NOT EXISTS deals_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,32 +38,26 @@ def init_db():
     conn.commit()
     conn.close()
 
-def save_record(date, time_slot, mood, weather, is_work, food_name, restaurant_name, lat, lng):
-    """Save a single dining record to the database."""
+# --- Dining Records ---
+def save_record(date, meal_type, mood, weather, is_work, food_name, restaurant_name, lat, lng):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''
-        INSERT INTO dining_records 
-        (date, time_slot, mood, weather, is_work, food_name, restaurant_name, lat, lng) 
+        INSERT INTO dining_records (date, meal_type, mood, weather, is_work, food_name, restaurant_name, lat, lng) 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (date, time_slot, mood, weather, is_work, food_name, restaurant_name, lat, lng))
+    ''', (date, meal_type, mood, weather, is_work, food_name, restaurant_name, lat, lng))
     conn.commit()
     conn.close()
 
 def load_history():
-    """Load all records from the database."""
     conn = sqlite3.connect(DB_FILE)
-    try:
-        df = pd.read_sql_query("SELECT * FROM dining_records", conn)
-    except:
-        df = pd.DataFrame()
+    df = pd.read_sql_query("SELECT * FROM dining_records", conn)
     conn.close()
     return df
 
-# --- Deals Cache Methods ---
-
+# --- Deals Cache ---
 def get_cached_deals():
-    """Get all cached deals."""
+    """Retrieve deals from cache."""
     conn = sqlite3.connect(DB_FILE)
     try:
         df = pd.read_sql_query("SELECT * FROM deals_cache", conn)
@@ -72,27 +67,17 @@ def get_cached_deals():
     return df
 
 def update_deals(deals_list):
-    """
-    Update the cache with new deals.
-    deals_list: list of dicts {'chain_name', 'title', 'link', 'source', 'fetched_date'}
-    """
+    """Clear cache and save new deals."""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
+    c.execute("DELETE FROM deals_cache") # Clear old cache
     
-    # Clear old deals to avoid duplicates/outdated info (Simple strategy: wipe and replace)
-    # Or we can just wipe everything since we re-fetch all chains at once
-    c.execute("DELETE FROM deals_cache")
-    
-    c.executemany('''
-        INSERT INTO deals_cache (chain_name, title, link, source, fetched_date)
-        VALUES (:chain_name, :title, :link, :source, :fetched_date)
-    ''', deals_list)
-    
+    for deal in deals_list:
+        c.execute('''
+            INSERT INTO deals_cache (chain_name, title, link, source, fetched_date)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (deal['chain_name'], deal['title'], deal['link'], deal['source'], deal['fetched_date']))
+            
     conn.commit()
     conn.close()
 
-def clear_old_deals():
-    """Clear deals older than 7 days (Optional helper)."""
-    # Since update_deals wipes the table, this might not be strictly necessary 
-    # unless we want partial updates. For now, we rely on update_deals.
-    pass
