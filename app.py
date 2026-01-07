@@ -6,27 +6,129 @@ from sklearn.ensemble import RandomForestClassifier
 # Import custom modules
 import database
 import google_service
+import urllib.parse
+from streamlit_js_eval import get_geolocation  # 新增：瀏覽器精準定位
 
 # --- Configuration ---
-st.set_page_config(page_title="Dining Decision System", page_icon="🍱", layout="centered")
-GOOGLE_MAPS_API_KEY = "AIzaSyBa6bjJALq6vPrTRVy7HuChBw1PcSCRX_w"
+st.set_page_config(page_title="今天吃什麼", page_icon="🍱", layout="centered")
+
+# 嘗試從 Secrets 讀取 API Key，失敗則使用 Hardcoded Key (演示用)
+try:
+    GOOGLE_MAPS_API_KEY = st.secrets["GOOGLE_MAPS_API_KEY"]
+except:
+    GOOGLE_MAPS_API_KEY = "AIzaSyBa6bjJALq6vPrTRVy7HuChBw1PcSCRX_w"
+
+# --- iOS Style CSS (Dark Mode) ---
+st.markdown("""
+    <style>
+        /* Global Font & Colors */
+        html, body, [class*="css"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #f2f2f7; /* Light Gray Text */
+            background-color: #1c1c1e; /* Dark Background */
+        }
+        
+        /* App Background */
+        .stApp {
+            background-color: #000000; /* Deep Black Background */
+        }
+
+        /* Buttons (iOS Blue Style) */
+        .stButton > button {
+            background-color: #0a84ff; /* iOS Dark Mode Blue */
+            color: white;
+            border-radius: 12px;
+            border: none;
+            padding: 10px 20px;
+            font-weight: 500;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+        .stButton > button:hover {
+            opacity: 0.8;
+            color: white;
+            border: none;
+        }
+        .stButton > button:active {
+            opacity: 0.6;
+        }
+
+        /* Inputs (Dark Gray) */
+        .stTextInput > div > div, .stSelectbox > div > div, .stDateInput > div > div {
+            background-color: #1c1c1e;
+            color: white;
+            border-radius: 10px;
+            border: 1px solid #3a3a3c;
+        }
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] div {
+            color: white;
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 20px;
+            background-color: #1c1c1e;
+            padding: 10px 20px;
+            border-radius: 16px;
+            border: 1px solid #2c2c2e;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: auto;
+            white-space: pre-wrap;
+            border-radius: 8px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            color: #8e8e93; /* Gray for unselected */
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #2c2c2e;
+            color: #0a84ff;
+            font-weight: 600;
+        }
+        
+        /* Expander / Cards */
+        .streamlit-expanderHeader {
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            border: 1px solid #2c2c2e;
+        }
+        .streamlit-expanderContent {
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            border-radius: 12px;
+        }
+        
+        /* Headers */
+        h1, h2, h3 {
+            font-weight: 700;
+            color: #f2f2f7;
+        }
+        
+        /* Remove default streamlit menu */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+    </style>
+""", unsafe_allow_html=True)
 
 # --- Initialize Database ---
 database.init_db()
 
 # --- UI Maps ---
-mood_map = {1: "開心 😊", 2: "普通 😐", 3: "鬱悶 😞"}
-weather_map = {1: "晴天 ☀️", 2: "雨天 🌧️", 3: "陰天 ☁️"}
-time_slot_map = {"早餐": "早餐 🍳", "午餐": "午餐 🍱", "晚餐": "晚餐 🍽️", "宵夜": "宵夜 🍢"}
+mood_map = {1: "開心", 2: "普通", 3: "鬱悶"}
+weather_map = {1: "晴天", 2: "雨天", 3: "陰天"}
+time_slot_map = {"早餐": "早餐", "午餐": "午餐", "晚餐": "晚餐", "宵夜": "宵夜"}
 
 # --- Main App ---
-st.title("🍱 今天吃什麼？ (定位版)")
+st.title("今天吃什麼")
 
-tab1, tab2, tab3 = st.tabs(["🍽️ 記錄餐點", "🤖 AI 推薦", "📊 歷史數據"])
+tab1, tab2, tab3, tab4 = st.tabs(["記錄", "推薦", "紀錄", "優惠"])
 
 # --- Tab 1: Record Meal ---
 with tab1:
-    st.header("📍 記錄你的美食足跡")
+    st.subheader("記錄美食足跡")
     
     # Step 1: Environment
     col1, col2 = st.columns(2)
@@ -44,15 +146,46 @@ with tab1:
     st.subheader("1. 取得位置")
     if 'current_location' not in st.session_state:
         st.session_state.current_location = None
+    
+    # 全方位定位系統 (Bulletproof Location System)
+    loc_col1, loc_col2, loc_col3 = st.columns(3)
+    
+    with loc_col1:
+        # A. 瀏覽器精準定位 (High Accuracy)
+        browser_loc = get_geolocation(component_key='get_geolocation')
+        if browser_loc:
+            st.session_state.current_location = {
+                'lat': browser_loc['coords']['latitude'],
+                'lng': browser_loc['coords']['longitude']
+            }
+            # 定位成功自動顯示回饋
+    
+    with loc_col2:
+        # B. IP 定位 (備用)
+        if st.button("🌐 IP 定位 (備用)"):
+            with st.spinner("正在取得 IP 位置..."):
+                loc = google_service.get_ip_location()
+                if loc:
+                    st.session_state.current_location = loc
+                    st.toast(f"IP 定位成功：{loc['city']}", icon="✅")
+                else:
+                    st.error("IP 定位失敗")
+    
+    with loc_col3:
+        # C. 演示模式 (強制三民區)
+        if st.button("🏫 設為三民區 (演示)"):
+            st.session_state.current_location = {'lat': 22.6515, 'lng': 120.3200}
+            st.toast("已切換至高雄三民區", icon="🚀")
 
-    if st.button("📍 取得我的位置 (IP)"):
-        with st.spinner("正在定位..."):
-            loc = google_service.get_ip_location()
-            if loc:
-                st.session_state.current_location = loc
-                st.success(f"已定位：{loc['lat']}, {loc['lng']}")
-            else:
-                st.error("無法取得位置")
+    # 顯示目前位置資訊與地圖
+    if st.session_state.current_location:
+        lat = st.session_state.current_location['lat']
+        lng = st.session_state.current_location['lng']
+        st.info(f"目前位置：{lat:.4f}, {lng:.4f}")
+        
+        # 顯示小地圖確認
+        st.map(pd.DataFrame({'lat': [lat], 'lon': [lng]}), zoom=14)
+
 
     # Step 3: Search
     st.subheader("2. 搜尋附近餐廳")
@@ -61,7 +194,7 @@ with tab1:
     if 'search_results' not in st.session_state:
         st.session_state.search_results = []
 
-    if st.button("🔍 搜尋附近餐廳"):
+    if st.button("搜尋附近餐廳"):
         if not st.session_state.current_location:
             st.warning("請先取得位置！")
         elif not search_keyword:
@@ -80,7 +213,12 @@ with tab1:
         st.subheader("3. 選擇餐廳")
         
         # Create options list for display
-        options = [f"{p['name']} ({p['address']})" for p in st.session_state.search_results]
+        options = []
+        for p in st.session_state.search_results:
+            rating_str = f"⭐ {p.get('rating', 'N/A')}"
+            reviews = f"({p.get('user_ratings_total', 0)}則評論)"
+            options.append(f"{p['name']} - {rating_str} {reviews}")
+            
         selection = st.radio("搜尋結果：", options)
         
         # Find the selected place object
@@ -90,11 +228,36 @@ with tab1:
         # Show map of selected place
         st.map(pd.DataFrame({'lat': [selected_place['lat']], 'lon': [selected_place['lng']]}))
         
+        # Display details and Menu Link
         st.info(f"已選擇：**{selected_place['name']}**")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            if selected_place.get('place_id'):
+                place_id = selected_place['place_id']
+                query_name = urllib.parse.quote(selected_place['name'])
+                # Google Maps Deep Link
+                menu_url = f"https://www.google.com/maps/search/?api=1&query={query_name}&query_place_id={place_id}"
+                st.link_button("查看菜單/詳情 (使用 Google Maps)", menu_url)
+        
+        with col_m2:
+            # Feature A: Google Image Search
+            img_query = urllib.parse.quote(f"{selected_place['name']} 菜單")
+            img_search_url = f"https://www.google.com/search?q={img_query}&tbm=isch"
+            st.link_button("搜尋該店菜單 (Google 圖片)", img_search_url, help="點擊按鈕可直接查看網友上傳的菜單圖片")
+
+        # Feature B: Official Website Preview
+        if selected_place.get('website'):
+            st.markdown("---")
+            st.subheader("官網資訊摘要")
+            with st.spinner("正在預覽官網內容..."):
+                preview_text = google_service.get_website_preview(selected_place['website'])
+                st.info(preview_text)
+                st.link_button("前往官網", selected_place['website'])
 
     # Step 5: Save
     st.markdown("---")
-    if st.button("💾 儲存紀錄", type="primary"):
+    if st.button("儲存紀錄", type="primary"):
         if selected_place:
             database.save_record(
                 date.strftime("%Y-%m-%d"), 
@@ -113,7 +276,7 @@ with tab1:
 
 # --- Tab 2: AI Prediction ---
 with tab2:
-    st.header("🔮 AI 幫你決定")
+    st.subheader("AI 幫你決定")
     
     df = database.load_history()
     
@@ -126,26 +289,71 @@ with tab2:
         p_weather = c2.selectbox("目前天氣", list(weather_map.keys()), format_func=lambda x: weather_map[x], key="p_w")
         p_work = c3.checkbox("工作日？", value=True, key="p_wk")
         
-        if st.button("🤖 AI 推薦"):
+        if st.button("開始推薦"):
             # Train Model
             X = df[['mood', 'weather', 'is_work']]
             y = df['restaurant_name']
             clf = RandomForestClassifier(n_estimators=100, random_state=42)
             clf.fit(X, y)
             
-            # Predict
+            # Predict Probabilities
             input_data = pd.DataFrame([[p_mood, p_weather, 1 if p_work else 0]], columns=['mood', 'weather', 'is_work'])
-            prediction = clf.predict(input_data)[0]
+            probs = clf.predict_proba(input_data)[0]
             
-            st.success(f"AI 推薦你去吃： **{prediction}**")
+            # Get top 3 recommendations
+            top_indices = probs.argsort()[-3:][::-1]
+            top_restaurants = [(clf.classes_[i], probs[i]) for i in top_indices]
             
-            # Find details if available in history
+            st.success(f"首選推薦： **{top_restaurants[0][0]}** ({top_restaurants[0][1]*100:.1f}%)")
+            
+            # Display Top 3
+            st.write("其他候選：")
+            for name, prob in top_restaurants[1:]:
+                st.write(f"- **{name}** ({prob*100:.1f}%)")
+            
+            # Find details for the top prediction
+            prediction = top_restaurants[0][0]
             record = df[df['restaurant_name'] == prediction].iloc[0]
             if not pd.isna(record['lat']):
                 st.map(pd.DataFrame({'lat': [record['lat']], 'lon': [record['lng']]}))
 
 # --- Tab 3: History ---
 with tab3:
-    st.header("📊 歷史紀錄")
+    st.subheader("歷史紀錄")
     df = database.load_history()
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
+
+# --- Tab 4: Weekly Deals ---
+with tab4:
+    st.subheader("連鎖餐廳本週優惠")
+    st.caption("自動搜尋各大連鎖餐廳的最新優惠資訊 (每週更新)")
+    
+    # Initialize DealFinder
+    from deals_service import DealFinder
+    finder = DealFinder()
+    
+    # Force Refresh Button
+    col_d1, col_d2 = st.columns([3, 1])
+    with col_d2:
+        if st.button("刷新", type="secondary"):
+            with st.spinner("正在重新搜尋優惠..."):
+                deals_df, update_date = finder.fetch_latest_deals(force_refresh=True)
+                st.success("已更新！")
+                st.rerun()
+    
+    # Load Deals
+    deals_df, update_date = finder.fetch_latest_deals()
+    
+    st.info(f"📅 資料更新日期: {update_date}")
+    
+    if not deals_df.empty:
+        # Group by chain name
+        chains = deals_df['chain_name'].unique()
+        for chain in chains:
+            with st.expander(f"{chain}", expanded=True):
+                chain_deals = deals_df[deals_df['chain_name'] == chain]
+                for _, row in chain_deals.iterrows():
+                    st.markdown(f"**[{row['title']}]({row['link']})**")
+                    st.caption(f"來源: {row['source']}")
+    else:
+        st.warning("目前無法取得優惠資訊，請稍後再試或點擊強制刷新。")

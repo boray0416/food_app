@@ -1,0 +1,6 @@
+streamlit
+pandas
+scikit-learn
+requests
+duckduckgo-search
+streamlit-js-eval

@@ -9,7 +9,102 @@ import streamlit.components.v1 as components  # 用來嵌入地圖
 import requests  # 新增：用來抓取 IP 位置
 
 # --- 設定頁面配置 ---
-st.set_page_config(page_title="今天吃什麼 (Dining Decision)", page_icon="🍱", layout="centered")
+st.set_page_config(page_title="今天吃什麼", page_icon="🍱", layout="centered")
+
+# --- iOS Style CSS (Dark Mode) ---
+st.markdown("""
+    <style>
+        /* Global Font & Colors */
+        html, body, [class*="css"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #f2f2f7; /* Light Gray Text */
+            background-color: #1c1c1e; /* Dark Background */
+        }
+        
+        /* App Background */
+        .stApp {
+            background-color: #000000; /* Deep Black Background */
+        }
+
+        /* Buttons (iOS Blue Style) */
+        .stButton > button {
+            background-color: #0a84ff; /* iOS Dark Mode Blue */
+            color: white;
+            border-radius: 12px;
+            border: none;
+            padding: 10px 20px;
+            font-weight: 500;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+        .stButton > button:hover {
+            opacity: 0.8;
+            color: white;
+            border: none;
+        }
+        .stButton > button:active {
+            opacity: 0.6;
+        }
+
+        /* Inputs (Dark Gray) */
+        .stTextInput > div > div, .stSelectbox > div > div, .stDateInput > div > div {
+            background-color: #1c1c1e;
+            color: white;
+            border-radius: 10px;
+            border: 1px solid #3a3a3c;
+        }
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] div {
+            color: white;
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 20px;
+            background-color: #1c1c1e;
+            padding: 10px 20px;
+            border-radius: 16px;
+            border: 1px solid #2c2c2e;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: auto;
+            white-space: pre-wrap;
+            border-radius: 8px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            color: #8e8e93; /* Gray for unselected */
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #2c2c2e;
+            color: #0a84ff;
+            font-weight: 600;
+        }
+        
+        /* Expander / Cards */
+        .streamlit-expanderHeader {
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            border: 1px solid #2c2c2e;
+        }
+        .streamlit-expanderContent {
+            background-color: #1c1c1e;
+            color: #f2f2f7;
+            border-radius: 12px;
+        }
+        
+        /* Headers */
+        h1, h2, h3 {
+            font-weight: 700;
+            color: #f2f2f7;
+        }
+        
+        /* Remove default streamlit menu */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+    </style>
+""", unsafe_allow_html=True)
 
 # --- ⚠️ 你的 Google Maps API Key ---
 GOOGLE_MAPS_API_KEY = "AIzaSyBa6bjJALq6vPrTRVy7HuChBw1PcSCRX_w"
@@ -103,18 +198,17 @@ init_db()
 seed_data()
 
 # --- 主程式 ---
-st.title("🍱 今天吃什麼？ (高雄三民版)")
-st.caption("AI 推薦 + Google Maps + IP 定位技術展示 🚀")
+st.title("今天吃什麼")
 
 # 中文分頁
-tab1, tab2, tab3 = st.tabs(["🍽️ 記錄餐點", "🤖 AI 推薦 & 定位", "📊 歷史數據"])
+tab1, tab2, tab3 = st.tabs(["記錄", "推薦", "紀錄"])
 
-mood_map = {1: "開心 😊", 2: "普通 😐", 3: "鬱悶 😞"}
-weather_map = {1: "晴天 ☀️", 2: "雨天 🌧️", 3: "陰天 ☁️"}
+mood_map = {1: "開心", 2: "普通", 3: "鬱悶"}
+weather_map = {1: "晴天", 2: "雨天", 3: "陰天"}
 
 # --- Tab 1: 用餐紀錄 ---
 with tab1:
-    st.header("📝 記錄你的三民區美食地圖")
+    st.subheader("記錄三民區美食地圖")
     col1, col2 = st.columns(2)
     with col1:
         mood = st.selectbox("心情", options=list(mood_map.keys()), format_func=lambda x: mood_map[x])
@@ -131,7 +225,7 @@ with tab1:
     with col4:
         restaurant_name = st.text_input("餐廳/店家名稱", placeholder="例如：三塊厝鴨肉飯")
     
-    if st.button("💾 儲存紀錄", type="primary"):
+    if st.button("儲存紀錄", type="primary"):
         if food_name and restaurant_name:
             save_record(mood, weather, is_work, meal_type, food_name, restaurant_name)
             st.success(f"已儲存：**{restaurant_name}** 的 {food_name}！")
@@ -140,11 +234,11 @@ with tab1:
 
 # --- Tab 2: AI 推薦 (含 IP 定位) ---
 with tab2:
-    st.header("🔮 AI 幫你決定去哪吃")
+    st.subheader("AI 幫你決定")
     
     # --- 新增：IP 定位區塊 ---
-    with st.expander("📍 檢視我的 IP 目前位置", expanded=False):
-        if st.button("🔍 偵測我的位置"):
+    with st.expander("檢視 IP 目前位置", expanded=False):
+        if st.button("偵測位置"):
             with st.spinner("正在連線衛星與基地台..."):
                 loc_data = get_ip_location()
                 if loc_data:
@@ -159,7 +253,7 @@ with tab2:
                     st.error("無法抓取位置，請檢查網路連線。")
 
     st.markdown("---")
-    st.subheader("🤖 輸入現在狀態")
+    st.subheader("輸入現在狀態")
     
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
@@ -170,7 +264,7 @@ with tab2:
         curr_work_bool = st.checkbox("是否工作日", value=True, key="p_wk")
         curr_work = 1 if curr_work_bool else 0
     
-    if st.button("🤖 幫我找三民區美食"):
+    if st.button("開始推薦"):
         df = load_data()
         if len(df) < 5:
             st.warning("資料不足，請先到「記錄餐點」頁面輸入更多資料！")
@@ -182,9 +276,19 @@ with tab2:
             clf.fit(X, y)
             
             input_data = pd.DataFrame([[curr_mood, curr_weather, curr_work]], columns=['mood', 'weather', 'is_work'])
-            prediction_store = clf.predict(input_data)[0]
             
-            st.markdown(f"### 📍 AI 強力推薦： **{prediction_store}**")
+            # Predict Probabilities
+            probs = clf.predict_proba(input_data)[0]
+            top_indices = probs.argsort()[-3:][::-1]
+            top_restaurants = [(clf.classes_[i], probs[i]) for i in top_indices]
+            
+            prediction_store = top_restaurants[0][0]
+            
+            st.markdown(f"### 首選推薦： **{prediction_store}** ({top_restaurants[0][1]*100:.1f}%)")
+            
+            st.write("其他候選：")
+            for name, prob in top_restaurants[1:]:
+                st.write(f"- **{name}** ({prob*100:.1f}%)")
             
             # --- Google Maps Embed API ---
             # 將店家名稱編碼 + 強制加入「高雄三民區」以提高準確度
@@ -193,20 +297,20 @@ with tab2:
             # 組合嵌入式地圖 URL
             embed_url = f"https://www.google.com/maps/embed/v1/search?key={GOOGLE_MAPS_API_KEY}&q={search_query}&zoom=16"
             
-            st.markdown("👇 店家位置預覽：")
+            st.write("店家位置預覽：")
             components.iframe(embed_url, height=400)
             
             col_b1, col_b2 = st.columns(2)
             with col_b1:
-                st.link_button(f"🚀 Google 導航 ({prediction_store})", f"https://www.google.com/maps/search/?api=1&query={search_query}")
+                st.link_button(f"Google 導航 ({prediction_store})", f"https://www.google.com/maps/search/?api=1&query={search_query}")
             with col_b2:
                 # 這裡可以做一個按鈕是「從我的位置出發」(使用 IP 經緯度)
                 # 簡單版直接跳轉 Google Maps 路線規劃
-                st.link_button("🚗 規劃路線", f"https://www.google.com/maps/dir/?api=1&destination={search_query}")
+                st.link_button("規劃路線", f"https://www.google.com/maps/dir/?api=1&destination={search_query}")
 
 # --- Tab 3: 歷史紀錄 ---
 with tab3:
-    st.header("📊 三民區美食大數據")
+    st.subheader("三民區美食大數據")
     df = load_data()
     
     df_display = df.rename(columns={
@@ -215,13 +319,13 @@ with tab3:
         "food_name": "食物", "restaurant_name": "餐廳"
     })
     
-    st.dataframe(df_display, use_container_width=True)
+    st.dataframe(df_display, width="stretch")
     
     if not df.empty:
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            st.subheader("🏆 人氣餐廳排行榜")
+            st.subheader("人氣排行榜")
             st.bar_chart(df['restaurant_name'].value_counts().head(5))
         with col_c2:
-            st.subheader("🏆 熱門食物")
+            st.subheader("熱門食物")
             st.bar_chart(df['food_name'].value_counts().head(5))
