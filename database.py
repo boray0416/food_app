@@ -1,27 +1,44 @@
 import sqlite3
 import pandas as pd
 
-DB_FILE = "dining_system.db"
+DB_FILE = "dining_v2.db"
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     
-    # 1. Dining Records Table (Single User)
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS dining_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT,
-            mood INTEGER,
-            weather INTEGER,
-            is_work INTEGER,
-            meal_type TEXT,
-            food_name TEXT,
-            restaurant_name TEXT,
-            lat REAL,
-            lng REAL
-        )
-    ''')
+    # 1. Dining Records Table (Consolidated Schema from main.py)
+    # Note: 'lat' and 'lng' were in dining_system.db but removed in dining_v2.db initial version
+    # We should add them back if we want to support storing location
+    # But for now let's match the schema in dining_v2.db which generate_data.py uses
+    # dining_v2.db schema: id, date, mood, weather, is_work, meal_type, food_name, restaurant_name
+    # AND ADD lat, lng to support app.py functionality
+    
+    # Check if table exists to decide migration or alter
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dining_records'")
+    if not c.fetchone():
+        c.execute('''
+            CREATE TABLE dining_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT,
+                mood INTEGER,
+                weather INTEGER,
+                is_work INTEGER,
+                meal_type TEXT,
+                food_name TEXT,
+                restaurant_name TEXT,
+                lat REAL,
+                lng REAL
+            )
+        ''')
+    else:
+        # Check if lat/lng columns exist, if not add them
+        c.execute("PRAGMA table_info(dining_records)")
+        columns = [row[1] for row in c.fetchall()]
+        if 'lat' not in columns:
+            c.execute("ALTER TABLE dining_records ADD COLUMN lat REAL")
+        if 'lng' not in columns:
+            c.execute("ALTER TABLE dining_records ADD COLUMN lng REAL")
 
     # 2. Deals Cache Table
     c.execute('''

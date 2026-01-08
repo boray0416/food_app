@@ -8,6 +8,8 @@ import database
 import google_service
 import urllib.parse
 from streamlit_js_eval import get_geolocation
+import streamlit.components.v1 as components  # For Map Embedding
+import requests # For IP Location
 
 # --- Configuration ---
 st.set_page_config(page_title="今天吃什麼", page_icon="🍱", layout="centered")
@@ -116,6 +118,19 @@ st.markdown("""
 # --- Initialize Database ---
 database.init_db()
 
+# --- Helper Functions ---
+def get_ip_location():
+    try:
+        # 使用免費的 ip-api.com 服務
+        response = requests.get('http://ip-api.com/json/')
+        data = response.json()
+        if data['status'] == 'success':
+            return data
+        else:
+            return None
+    except:
+        return None
+
 # --- UI Maps ---
 mood_map = {1: "開心", 2: "普通", 3: "鬱悶"}
 weather_map = {1: "晴天", 2: "雨天", 3: "陰天"}
@@ -124,11 +139,11 @@ time_slot_map = {"早餐": "早餐", "午餐": "午餐", "晚餐": "晚餐", "�
 # --- Main App ---
 st.title("今天吃什麼")
 
-tab1, tab2, tab3, tab4 = st.tabs(["記錄", "推薦", "紀錄", "優惠"])
+tab1, tab2, tab3, tab4 = st.tabs(["探索", "推薦", "紀錄", "優惠"])
 
 # --- Tab 1: Record Meal ---
 with tab1:
-    st.subheader("記錄美食足跡")
+    st.subheader("探索美食足跡")
     
     # Step 1: Environment
     col1, col2 = st.columns(2)
@@ -267,6 +282,51 @@ with tab1:
 with tab2:
     st.subheader("AI 幫你決定")
     
+    # --- UI Refactor: IP Location Block ---
+    with st.container(border=True):
+        st.write("📍 **目前位置偵測**")
+        if st.button("📍 偵測我的位置", use_container_width=True):
+            loc_data = None
+            with st.status("正在連線衛星與基地台...", expanded=True) as status:
+                st.write("🔍 正在搜尋 IP Address...")
+                loc_data = get_ip_location()
+                
+                if loc_data:
+                    status.update(label="定位完成！", state="complete", expanded=False)
+                    # Update Session State immediately
+                    st.session_state.current_location = {
+                        'lat': loc_data['lat'],
+                        'lng': loc_data['lon'],
+                        'city': loc_data['city'],
+                        'region': loc_data['regionName'],
+                        'country': loc_data['country']
+                    }
+                else:
+                    status.update(label="定位失敗", state="error")
+                    st.error("無法抓取位置，請檢查網路連線。")
+        
+        # Display Location Data (Persistent)
+        if st.session_state.get('current_location'):
+            curr_loc = st.session_state.current_location
+            # 使用 Columns 顯示數據 (Visual Metrics)
+            m1, m2 = st.columns(2)
+            with m1:
+                st.metric(label="城市/地區", value=f"{curr_loc.get('city', 'Unknown')}")
+            with m2:
+                st.metric(label="經緯度", value=f"{curr_loc['lat']:.4f}, {curr_loc['lng']:.4f}")
+            
+            if 'region' in curr_loc:
+                st.caption(f"完整位置：{curr_loc['region']}, {curr_loc.get('country','')}")
+            
+            # 顯示位置地圖
+            # map_url = f"https://www.google.com/maps/embed/v1/search?key={GOOGLE_MAPS_API_KEY}&q={curr_loc['lat']},{curr_loc['lng']}&zoom=14"
+            # components.iframe(map_url, height=250)
+            
+            # 使用 st.map 替代 embed api 以避免 key 問題
+            st.map(pd.DataFrame({'lat': [curr_loc['lat']], 'lon': [curr_loc['lng']]}), zoom=14)
+
+    st.markdown("---")
+    
     df = database.load_history()
     
     if len(df) < 5:
@@ -303,14 +363,47 @@ with tab2:
             # Find details for the top prediction
             prediction = top_restaurants[0][0]
             record = df[df['restaurant_name'] == prediction].iloc[0]
-            if not pd.isna(record['lat']):
-                st.map(pd.DataFrame({'lat': [record['lat']], 'lon': [record['lng']]}))
+            
+            # --- Google Maps Embed API (Improved) ---
+            search_query = urllib.parse.quote(f"高雄三民區 {prediction}")
+            
+            # 優先使用資料庫中的經緯度顯示 st.map
+            if not pd.isna(record['lat']) and not pd.isna(record['lng']):
+                st.write("店家位置預覽：")
+                st.map(pd.DataFrame({'lat': [record['lat']], 'lon': [record['lng']]}), zoom=16)
+            else:
+                # 只有當沒有經緯度時才嘗試 Embed (或是顯示提示)
+                st.warning("查無座標資訊，請使用下方按鈕開啟導航。")
+            
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                st.link_button(f"Google 導航 ({prediction})", f"https://www.google.com/maps/search/?api=1&query={search_query}")
+            with col_b2:
+                 st.link_button("規劃路線", f"https://www.google.com/maps/dir/?api=1&destination={search_query}")
 
 # --- Tab 3: History ---
 with tab3:
-    st.subheader("歷史紀錄")
+    st.subheader("美食大數據")
     df = database.load_history()
-    st.dataframe(df, width="stretch")
+    
+    # Rename columns for display
+    df_display = df.rename(columns={
+        "date": "日期", "mood": "心情指數", "weather": "天氣指數", 
+        "is_work": "工作日", "meal_type": "餐別", 
+        "food_name": "食物", "restaurant_name": "餐廳",
+        "lat": "緯度", "lng": "經度"
+    })
+    
+    st.dataframe(df_display, use_container_width=True)
+    
+    if not df.empty:
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            st.subheader("人氣排行榜")
+            st.bar_chart(df['restaurant_name'].value_counts().head(5))
+        with col_c2:
+            st.subheader("熱門食物")
+            st.bar_chart(df['food_name'].value_counts().head(5))
 
 # --- Tab 4: Weekly Deals ---
 with tab4:
